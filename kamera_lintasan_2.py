@@ -1,0 +1,359 @@
+import datetime
+from pathlib import Path
+
+import cv2
+import numpy as np
+import openvino as ov
+from ultralytics import YOLO
+from supabase import create_client, Client
+
+
+SUPABASE_URL = "https://jyjunbzusfrmaywmndpa.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5anVuYnp1c2ZybWF5d21uZHBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NDMxMTgsImV4cCI6MjA2OTQxOTExOH0.IQ6yyyR2OpvQj1lIL1yFsWfVNhJIm2_EFt5Pnv4Bd38"
+
+# Index kamera 
+CAMERA_1_INDEX = 0   # kamera_atas
+CAMERA_2_INDEX = 1   # kamera_bawah
+
+# Model OpenVINO
+DET_MODEL_PATH = Path("hijau_openvino_model/hijau.xml")
+
+# Parameter deteksi
+CONF_THRESHOLD = 0.85
+MIN_AREA = 500           # minimal luas bbox
+TOLERANCE_METER = 5       # toleransi jarak ke target dalam meter
+
+# Supabase client
+client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+# OpenVINO core
+core = ov.Core()
+
+# format A
+
+def get_cardinal_direction(value, coord_type):
+    if coord_type == "lat":
+        return "N" if value >= 0 else "S"
+    elif coord_type == "lon":
+        return "E" if value >= 0 else "W"
+    return ""
+
+
+def formatA(lat, lon):
+    # Format koordinat: N 1.234567 E 2.345678
+    lat_dir = get_cardinal_direction(lat, "lat")
+    lon_dir = get_cardinal_direction(lon, "lon")
+    return f"{lat_dir} {abs(lat):.6f} {lon_dir} {abs(lon):.6f}"
+
+
+def tolerance_distance(lat1, lon1, lat2, lon2, tolerance_meter=TOLERANCE_METER):
+    R = 6371000  # radius bumi dalam meter
+    phi1 = np.radians(lat1)
+    phi2 = np.radians(lat2)
+    d_phi = np.radians(lat2 - lat1)
+    d_lam = np.radians(lon2 - lon1)
+
+    a = np.sin(d_phi / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(d_lam / 2) ** 2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    distance = R * c
+    return distance <= tolerance_meter
+
+
+def ms_to_kmh(sog_ms):
+    if sog_ms is None or not isinstance(sog_ms, (int, float)):
+        return 0.0
+    return float(sog_ms) * 3.6
+
+
+def file_existing(client: Client, bucket_name: str, filename: str) -> bool:
+    files = client.storage.from_(bucket_name).list()
+    return any(f["name"] == filename for f in files)
+
+#  SUPABASE DATA
+
+def get_target_location_by_id(target_id: int):
+    """
+      id=1 → target untuk kamera_atas
+      id=2 → target untuk kamera_bawah
+    """
+    res = (
+        client.table("target_gambar")
+        .select("lat, lon")
+        .eq("id", target_id)
+        .limit(1)
+        .execute()
+    )
+
+    if not res.data:
+        return None, None
+    return res.data[0]["lat"], res.data[0]["lon"]
+
+
+def get_latest_nav_and_cog(target_lat, target_lon):
+    nav_res = (
+        client.table("nav_data")
+        .select("*")
+        .order("timestamp", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not nav_res.data:
+        return None, False
+
+    nav = nav_res.data[0]
+    lat = nav["latitude"]
+    lon = nav["longitude"]
+    sog_kmsh = ms_to_kmh(nav["sog_ms"])
+    koordinat_str = formatA(lat, lon)
+
+    cog_res = (
+        client.table("cog_data")
+        .select("*")
+        .order("timestamp", desc=True)
+        .limit(1)
+        .execute()
+    )
+    cog = cog_res.data[0]["cog"] if cog_res.data else 0.0
+
+    latest_nav_data = {
+        "Koordinat": koordinat_str,
+        "sog_kmsh": sog_kmsh,
+        "cog": float(cog),
+    }
+
+    tolerance_ok = tolerance_distance(lat, lon, target_lat, target_lon)
+    return latest_nav_data, tolerance_ok
+
+
+def image_slot_already_filled(slot_name: str) -> bool:
+    res = (
+        client.table("image_mission")
+        .select("id")
+        .eq("image_slot_name", slot_name)
+        .limit(1)
+        .execute()
+    )
+    return bool(res.data)
+
+#  OPENVINO + YOLO
+
+def compile_model(det_model_path: Path, device: str):
+    det_ov_model = core.read_model(det_model_path)
+    ov_config = {}
+    if device != "CPU":
+        det_ov_model.reshape({0: [1, 3, 640, 640]})
+    if "GPU" in device or ("AUTO" in device and "GPU" in core.available_devices):
+        ov_config = {"GPU_DISABLE_WINOGRAD_CONVOLUTION": "YES"}
+    det_compiled_model = core.compile_model(det_ov_model, device, ov_config)
+    return det_compiled_model
+
+
+def load_model(det_model_path: Path, device: str):
+    compiled_model = compile_model(det_model_path, device)
+
+    det_model = YOLO(det_model_path.parent, task="detect")
+
+    if det_model.predictor is None:
+        custom = {"conf": 0.25, "batch": 1, "save": False, "mode": "predict"}
+        args = {**det_model.overrides, **custom}
+        det_model.predictor = det_model._smart_load("predictor")(
+            overrides=args, _callbacks=det_model.callbacks
+        )
+        det_model.predictor.setup_model(model=det_model.model)
+
+    det_model.predictor.model.ov_compiled_model = compiled_model
+    return det_model
+
+
+#  Nulis metadata ke frame
+
+def tulis_metadata_ke_frame(frame, latest_nav_data):
+    """Tulis teks metadata ke dalam frame."""
+    metadata_text = [
+        f"Day: {datetime.datetime.now().strftime('%a')}",
+        f"Date: {datetime.datetime.now().strftime('%d/%m/%Y')}",
+        f"Time: {datetime.datetime.now().strftime('%H:%M:%S')}",
+        f"Coordinate: {latest_nav_data['Koordinat']}",
+        f"SOG: {latest_nav_data['sog_kmsh']:.2f} km/h",
+        f"COG: {latest_nav_data['cog']:.2f}°",
+    ]
+    y_offset = 30
+    for text_line in metadata_text:
+        cv2.putText(
+            frame,
+            text_line,
+            (10, y_offset),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+        y_offset += 20
+
+
+#  PROSES KAMERA
+
+
+def capture_from_camera(
+    det_model,
+    camera_index: int,
+    image_slot_name: str,
+    image_filename: str,
+    target_lat: float,
+    target_lon: float,
+):
+
+    # Jika slot sudah terisi, tidak usah buka kamera
+    if image_slot_already_filled(image_slot_name):
+        print(f" Slot {image_slot_name} sudah punya foto. Skip kamera {camera_index}.")
+        return
+
+    print(f"Menyalakan kamera {camera_index} untuk slot {image_slot_name} ...")
+    cap = cv2.VideoCapture(camera_index)
+
+    if not cap.isOpened():
+        print(f"Tidak dapat membuka kamera {camera_index}.")
+        return
+
+    selesai_slot = False
+
+    window_name = f"Kamera {camera_index} - {image_slot_name}"
+
+    while cap.isOpened() and not selesai_slot:
+        ret, frame = cap.read()
+        if not ret:
+            print("Tidak ada frame, keluar dari loop.")
+            break
+
+        frame = cv2.resize(frame, (640, 480))
+
+        # Jalankan deteksi YOLO + OpenVINO
+        detections = det_model(frame, conf=CONF_THRESHOLD, verbose=False)
+
+        if detections and detections[0].boxes:
+            for box in detections[0].boxes:
+                cls_id = int(box.cls[0])
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+
+               
+
+                # Gambar bbox untuk visual
+                color = (0, 255, 0) if cls_id == 0 else (0, 0, 255)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+
+                luas = (x2 - x1) * (y2 - y1)
+                if luas >= MIN_AREA:
+                    continue
+
+                # Ambil nav_data & cek toleransi ke target kamera ini
+                latest_nav_data, tolerance_ok = get_latest_nav_and_cog(
+                    target_lat, target_lon
+                )
+
+                if latest_nav_data is None:
+                    print("nav_data kosong, skip frame.")
+                    continue
+
+                if not tolerance_ok:
+                    print("Di luar radius toleransi, skip frame.")
+                    continue
+
+                # Tulis metadata ke frame
+                tulis_metadata_ke_frame(frame, latest_nav_data)
+
+                # Cek apakah file dengan nama ini sudah ada di storage
+                if file_existing(client, "missionimages", image_filename):
+                    print(f"ℹ File {image_filename} sudah ada di storage.")
+                    selesai_slot = True
+                    break
+
+                success, encoded_img = cv2.imencode(".jpg", frame)
+                if not success:
+                    print(" Gagal meng-encode frame ke JPEG.")
+                    continue
+
+                image_bytes = encoded_img.tobytes()
+
+                # Upload langsung bytes ke Supabase Storage
+                client.storage.from_("missionimages").upload(
+                    image_filename,
+                    image_bytes,
+                    {"content-type": "image/jpeg"},
+                )
+
+                # Dapatkan public URL dan simpan ke tabel image_mission (ROW BARU)
+                public_url = client.storage.from_("missionimages").get_public_url(
+                    image_filename
+                )
+                client.table("image_mission").insert(
+                    {
+                        "image_url": public_url,
+                        "image_slot_name": image_slot_name,
+                    }
+                ).execute()
+
+                print(f" Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
+                selesai_slot = True
+                break  # keluar dari loop boxes
+
+        # Tampilkan frame
+        cv2.imshow(window_name, frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            print("Dihentikan oleh user (q).")
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+    print(f" Kamera {camera_index} dimatikan.\n")
+
+
+
+def main():
+    #   lintasan 2
+    #   id=3 → target kamera_atas
+    #   id=4 → target kamera_bawah
+    target_atas_lat, target_atas_lon = get_target_location_by_id(3)
+    target_bawah_lat, target_bawah_lon = get_target_location_by_id(4)
+
+    if target_atas_lat is None or target_atas_lon is None:
+        print(" Gagal mengambil target_lokasi kamera_atas (id=3) dari database.")
+        return
+
+    if target_bawah_lat is None or target_bawah_lon is None:
+        print(" Gagal mengambil target_lokasi kamera_bawah (id=4) dari database.")
+        return
+
+    print(f"Target kamera_atas : {formatA(target_atas_lat, target_atas_lon)}")
+    print(f"Target kamera_bawah: {formatA(target_bawah_lat, target_bawah_lon)}")
+
+    #  Load model deteksi 
+    print("Meload model YOLO + OpenVINO ...")
+    det_model = load_model(DET_MODEL_PATH, "CPU")
+    print(" Model siap digunakan.")
+
+    # Kamera 1 (kamera_atas,target titik A)
+    capture_from_camera(
+        det_model=det_model,
+        camera_index=CAMERA_1_INDEX,
+        image_slot_name="kamera_atas",
+        image_filename="kamera_atas.jpg",
+        target_lat=target_atas_lat,
+        target_lon=target_atas_lon,
+    )
+
+    # Kamera 2 (kamera_bawah,target titik B)
+    capture_from_camera(
+        det_model=det_model,
+        camera_index=CAMERA_2_INDEX,
+        image_slot_name="kamera_bawah",
+        image_filename="kamera_bawah.jpg",
+        target_lat=target_bawah_lat,
+        target_lon=target_bawah_lon,
+    )
+
+    print(" Semua proses selesai.")
+
+
+if __name__ == "__main__":
+    main()
