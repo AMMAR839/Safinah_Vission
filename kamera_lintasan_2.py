@@ -216,11 +216,9 @@ def capture_from_camera(
         print(f"Tidak dapat membuka kamera {camera_index}.")
         return
 
-    selesai_slot = False
-
     window_name = f"Kamera {camera_index} - {image_slot_name}"
 
-    while cap.isOpened() and not selesai_slot:
+    while cap.isOpened() :
         ret, frame = cap.read()
         if not ret:
             print("Tidak ada frame, keluar dari loop.")
@@ -236,66 +234,57 @@ def capture_from_camera(
                 cls_id = int(box.cls[0])
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-               
-
                 # Gambar bbox untuk visual
                 color = (0, 255, 0) if cls_id == 0 else (0, 0, 255)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
                 luas = (x2 - x1) * (y2 - y1)
                 if luas >= MIN_AREA:
-                    continue
+                    if file_existing(client, "missionimages", image_filename):
+                        print(f" File {image_filename} sudah ada di storage, skip upload.")
+                        break  
 
-                # Ambil nav_data & cek toleransi ke target kamera ini
-                latest_nav_data, tolerance_ok = get_latest_nav_and_cog(
-                    target_lat, target_lon
-                )
+                    # Ambil nav_data & cek toleransi ke target kamera ini
+                    # Ambil nav_data & cek toleransi ke target kamera ini
+                    latest_nav_data, tolerance_ok = get_latest_nav_and_cog(
+                        target_lat, target_lon
+                    )
 
-                if latest_nav_data is None:
-                    print("nav_data kosong, skip frame.")
-                    continue
+                    if tolerance_ok :
+                        # Tulis metadata ke frame
+                        tulis_metadata_ke_frame(frame, latest_nav_data)
 
-                if not tolerance_ok:
-                    print("Di luar radius toleransi, skip frame.")
-                    continue
+                        # Encode frame ke JPEG
+                        success, encoded_img = cv2.imencode(".jpg", frame)
+                        if not success:
+                            print(" Gagal meng-encode frame ke JPEG.")
+                            continue
 
-                # Tulis metadata ke frame
-                tulis_metadata_ke_frame(frame, latest_nav_data)
+                        image_bytes = encoded_img.tobytes()
 
-                # Cek apakah file dengan nama ini sudah ada di storage
-                if file_existing(client, "missionimages", image_filename):
-                    print(f"ℹ File {image_filename} sudah ada di storage.")
-                    selesai_slot = True
-                    break
+                        # Upload langsung bytes ke Supabase Storage
+                        client.storage.from_("missionimages").upload(
+                            image_filename,
+                            image_bytes,
+                            {"content-type": "image/jpeg"},
+                        )
 
-                success, encoded_img = cv2.imencode(".jpg", frame)
-                if not success:
-                    print(" Gagal meng-encode frame ke JPEG.")
-                    continue
+                        # Dapatkan public URL dan simpan ke tabel image_mission (ROW BARU)
+                        public_url = client.storage.from_("missionimages").get_public_url(
+                            image_filename
+                        )
+                        client.table("image_mission").insert(
+                            {
+                                "image_url": public_url,
+                                "image_slot_name": image_slot_name,
+                            }
+                        ).execute()
 
-                image_bytes = encoded_img.tobytes()
-
-                # Upload langsung bytes ke Supabase Storage
-                client.storage.from_("missionimages").upload(
-                    image_filename,
-                    image_bytes,
-                    {"content-type": "image/jpeg"},
-                )
-
-                # Dapatkan public URL dan simpan ke tabel image_mission (ROW BARU)
-                public_url = client.storage.from_("missionimages").get_public_url(
-                    image_filename
-                )
-                client.table("image_mission").insert(
-                    {
-                        "image_url": public_url,
-                        "image_slot_name": image_slot_name,
-                    }
-                ).execute()
-
-                print(f" Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
-                selesai_slot = True
-                break  # keluar dari loop boxes
+                        print(f" Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
+                        cap.release()
+                        break  
+                    else:
+                        print(" Objek terdeteksi, tapi di luar toleransi jarak ke target.")
 
         # Tampilkan frame
         cv2.imshow(window_name, frame)
