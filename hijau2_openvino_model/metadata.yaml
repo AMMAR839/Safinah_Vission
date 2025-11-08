@@ -1,0 +1,14 @@
+description: Ultralytics hijau2 model trained on /content/Kotak-Hijau--2/data.yaml
+author: Ultralytics
+date: '2025-11-08T21:32:50.002946'
+version: 8.3.0
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 32
+task: detect
+batch: 1
+imgsz:
+- 640
+- 640
+names:
+  0: green_box

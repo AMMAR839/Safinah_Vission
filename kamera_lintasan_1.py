@@ -16,10 +16,10 @@ CAMERA_1_INDEX = 0   # kamera_atas
 CAMERA_2_INDEX = 1   # kamera_bawah
 
 # Model OpenVINO
-DET_MODEL_PATH = Path("hijau_openvino_model/hijau.xml")
+DET_MODEL_PATH = Path("hijau2_openvino_model/hijau2.xml")
 
 # Parameter deteksi
-CONF_THRESHOLD = 0.95
+CONF_THRESHOLD = 0.9
 MIN_AREA = 500           # minimal luas bbox
 TOLERANCE_METER = 5       # toleransi jarak ke target dalam meter
 
@@ -189,18 +189,30 @@ def tulis_metadata_ke_frame(frame, latest_nav_data):
         f"Time: {datetime.datetime.now().strftime('%H:%M:%S')}",
         f"Coordinate: {latest_nav_data['Koordinat']}",
         f"SOG: {latest_nav_data['sog_kmsh']:.2f} km/h",
-        f"COG: {latest_nav_data['cog']:.2f}°",
+        f"COG: {latest_nav_data['cog']:.2f} deg",
     ]
     y_offset = 30
     for text_line in metadata_text:
+    # outline hitam (lebih tebal)
         cv2.putText(
             frame,
             text_line,
             (10, y_offset),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
-            (255, 255, 255),
-            1,
+            (0, 0, 0),        # hitam
+            3,                # tebal outline
+            cv2.LINE_AA,
+        )
+        # isi putih (lebih tipis)
+        cv2.putText(
+            frame,
+            text_line,
+            (10, y_offset),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),  # putih
+            1,                # tebal isi
             cv2.LINE_AA,
         )
         y_offset += 20
