@@ -19,7 +19,7 @@ CAMERA_2_INDEX = 1   # kamera_bawah
 DET_MODEL_PATH = Path("hijau_openvino_model/hijau.xml")
 
 # Parameter deteksi
-CONF_THRESHOLD = 0.85
+CONF_THRESHOLD = 0.95
 MIN_AREA = 500           # minimal luas bbox
 TOLERANCE_METER = 5       # toleransi jarak ke target dalam meter
 
@@ -27,26 +27,22 @@ TOLERANCE_METER = 5       # toleransi jarak ke target dalam meter
 client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # OpenVINO core
+# OpenVINO core
 core = ov.Core()
 
-
-def update_mission_status(field_name: str, status: str, ):
-    """
-    'image_atas', 'image_bawah'
-    """
+def update_mission_status(mission_id: str, status: str) -> None:
+    """ image_atas, image_bawah, misssion_finish"""
     try:
-        payload = {
-            field_name: status,
-            "updated_at": datetime.datetime.utcnow().isoformat()
-        }
-        res = client.table("data_mission").update(payload).eq("id", 1).execute()
+        update_data = {mission_id: status}
+        res = client.table("data_mission").update(update_data).eq("id", 1).execute()
+        # supabase-py mengembalikan objek dengan atribut `error`
         if getattr(res, "error", None):
-            print(f"[data_mission] Update gagal: {res.error}")
+            print(f"Gagal memperbarui status misi: {res.error}")
         else:
-            print(f"[data_mission] '{field_name}' -> {status}")
+            print(f"Status misi '{mission_id}' berhasil diperbarui menjadi {status}.")
     except Exception as e:
-        print("[data_mission] Exception saat update:", e)
-
+        print("Gagal memperbarui status misi:", e)
+          
 # format A
 
 def get_cardinal_direction(value, coord_type):
@@ -211,8 +207,6 @@ def tulis_metadata_ke_frame(frame, latest_nav_data):
 
 
 #  PROSES KAMERA
-
-
 def capture_from_camera(
     det_model,
     camera_index: int,
@@ -220,6 +214,7 @@ def capture_from_camera(
     image_filename: str,
     target_lat: float,
     target_lon: float,
+    mission_camera: str = "",
 ):
 
     # Jika slot sudah terisi, tidak usah buka kamera
@@ -235,7 +230,7 @@ def capture_from_camera(
         return
 
     window_name = f"Kamera {camera_index} - {image_slot_name}"
-
+    update_mission_status(mission_camera, "proses")
     while cap.isOpened() :
         ret, frame = cap.read()
         if not ret:
@@ -299,6 +294,7 @@ def capture_from_camera(
                         ).execute()
 
                         print(f" Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
+                        update_mission_status(mission_camera, "selesai")
                         cap.release()
                         break  
                     else:
@@ -318,8 +314,8 @@ def capture_from_camera(
 
 def main():
     #   lintasan 2
-    #   id=3 → target kamera_atas
-    #   id=4 → target kamera_bawah
+    #   id=1 → target kamera_atas
+    #   id=2 → target kamera_bawah
     target_atas_lat, target_atas_lon = get_target_location_by_id(1)
     target_bawah_lat, target_bawah_lon = get_target_location_by_id(2)
 
@@ -339,7 +335,7 @@ def main():
     det_model = load_model(DET_MODEL_PATH, "CPU")
     print(" Model siap digunakan.")
 
-    update_mission_status("image_atas", "proses")
+    
     # Kamera 1 (kamera_atas,target titik A)
     capture_from_camera(
         det_model=det_model,
@@ -348,9 +344,9 @@ def main():
         image_filename="kamera_atas.jpg",
         target_lat=target_atas_lat,
         target_lon=target_atas_lon,
+        mission_camera="image_atas",
     )
-    update_mission_status("image_atas", "selesai")
-    update_mission_status("image_bawah", "proses")
+    
     # Kamera 2 (kamera_bawah,target titik B)
     capture_from_camera(
         det_model=det_model,
@@ -359,10 +355,9 @@ def main():
         image_filename="kamera_bawah.jpg",
         target_lat=target_bawah_lat,
         target_lon=target_bawah_lon,
+        mission_camera="image_bawah",
     )
-    update_mission_status("image_bawah", "selesai")
-    update_mission_status("misssion_finish", "proses")
-    print(" Semua proses selesai.")
+    
 
 
 if __name__ == "__main__":
