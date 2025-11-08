@@ -29,6 +29,24 @@ client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 # OpenVINO core
 core = ov.Core()
 
+
+def update_mission_status(field_name: str, status: str, ):
+    """
+    'image_atas', 'image_bawah'
+    """
+    try:
+        payload = {
+            field_name: status,
+            "updated_at": datetime.datetime.utcnow().isoformat()
+        }
+        res = client.table("data_mission").update(payload).eq("id", 1).execute()
+        if getattr(res, "error", None):
+            print(f"[data_mission] Update gagal: {res.error}")
+        else:
+            print(f"[data_mission] '{field_name}' -> {status}")
+    except Exception as e:
+        print("[data_mission] Exception saat update:", e)
+
 # format A
 
 def get_cardinal_direction(value, coord_type):
@@ -321,6 +339,7 @@ def main():
     det_model = load_model(DET_MODEL_PATH, "CPU")
     print(" Model siap digunakan.")
 
+    update_mission_status("image_atas", "proses")
     # Kamera 1 (kamera_atas,target titik A)
     capture_from_camera(
         det_model=det_model,
@@ -330,7 +349,8 @@ def main():
         target_lat=target_atas_lat,
         target_lon=target_atas_lon,
     )
-
+    update_mission_status("image_atas", "selesai")
+    update_mission_status("image_bawah", "proses")
     # Kamera 2 (kamera_bawah,target titik B)
     capture_from_camera(
         det_model=det_model,
@@ -340,7 +360,8 @@ def main():
         target_lat=target_bawah_lat,
         target_lon=target_bawah_lon,
     )
-
+    update_mission_status("image_bawah", "selesai")
+    update_mission_status("misssion_finish", "proses")
     print(" Semua proses selesai.")
 
 
