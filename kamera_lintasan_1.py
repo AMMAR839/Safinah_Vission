@@ -6,7 +6,9 @@ import numpy as np
 import openvino as ov
 from ultralytics import YOLO
 from supabase import create_client, Client
+import time
 
+timestamp= int(time.time())
 
 SUPABASE_URL = "https://jyjunbzusfrmaywmndpa.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5anVuYnp1c2ZybWF5d21uZHBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NDMxMTgsImV4cCI6MjA2OTQxOTExOH0.IQ6yyyR2OpvQj1lIL1yFsWfVNhJIm2_EFt5Pnv4Bd38"
@@ -199,7 +201,7 @@ def tulis_metadata_ke_frame(frame, latest_nav_data):
             text_line,
             (10, y_offset),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
+            0.8,
             (0, 0, 0),        # hitam
             3,                # tebal outline
             cv2.LINE_AA,
@@ -210,12 +212,12 @@ def tulis_metadata_ke_frame(frame, latest_nav_data):
             text_line,
             (10, y_offset),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
+            0.8,
             (255, 255, 255),  # putih
             1,                # tebal isi
             cv2.LINE_AA,
         )
-        y_offset += 20
+        y_offset += 30
 
 
 #  PROSES KAMERA
@@ -353,7 +355,7 @@ def main():
         det_model=det_model,
         camera_index=CAMERA_1_INDEX,
         image_slot_name="kamera_atas",
-        image_filename="kamera_atas.jpg",
+        image_filename=f"kamera_atas_{timestamp}.jpg",
         target_lat=target_atas_lat,
         target_lon=target_atas_lon,
         mission_camera="image_atas",
@@ -364,7 +366,7 @@ def main():
         det_model=det_model,
         camera_index=CAMERA_2_INDEX,
         image_slot_name="kamera_bawah",
-        image_filename="kamera_bawah.jpg",
+        image_filename=f"kamera_bawah_{timestamp}.jpg",
         target_lat=target_bawah_lat,
         target_lon=target_bawah_lon,
         mission_camera="image_bawah",

@@ -6,6 +6,9 @@ import numpy as np
 import openvino as ov
 from ultralytics import YOLO
 from supabase import create_client, Client
+import time
+
+timestamp= int(time.time())
 
 
 SUPABASE_URL = "https://jyjunbzusfrmaywmndpa.supabase.co"
@@ -201,7 +204,7 @@ def tulis_metadata_ke_frame(frame, latest_nav_data):
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (0, 0, 0),        # hitam
-            3,                # tebal outline
+            5,                # tebal outline
             cv2.LINE_AA,
         )
         # isi putih (lebih tipis)
@@ -210,7 +213,7 @@ def tulis_metadata_ke_frame(frame, latest_nav_data):
             text_line,
             (10, y_offset),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
+            4,
             (255, 255, 255),  # putih
             1,                # tebal isi
             cv2.LINE_AA,
@@ -354,7 +357,7 @@ def main():
         det_model=det_model,
         camera_index=CAMERA_1_INDEX,
         image_slot_name="kamera_atas",
-        image_filename="kamera_atas.jpg",
+        image_filename=f"kamera_atas_{timestamp}.jpg",
         target_lat=target_atas_lat,
         target_lon=target_atas_lon,
         mission_camera="image_atas",
@@ -365,7 +368,7 @@ def main():
         det_model=det_model,
         camera_index=CAMERA_2_INDEX,
         image_slot_name="kamera_bawah",
-        image_filename="kamera_bawah.jpg",
+        image_filename="kamera_bawah_{timestamp}.jpg",
         target_lat=target_bawah_lat,
         target_lon=target_bawah_lon,
         mission_camera="image_bawah",
