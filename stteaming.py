@@ -286,10 +286,10 @@ if __name__ == "__main__":
 
     # Mulai thread capture (RAW stream) untuk 2 kamera
     threading.Thread(target=capture_worker, args=("atas", CAM1_SRC), daemon=True).start()
-    # threading.Thread(target=capture_worker, args=("bawah", CAM2_SRC), daemon=True).start()
+    threading.Thread(target=capture_worker, args=("bawah", CAM2_SRC), daemon=True).start()
 
     # Mulai thread detektor (pakai frame terbaru dari capture)
     threading.Thread(target=detector_worker, args=("atas", "kamera_atas", "image_atas", 1, det_model), daemon=True).start()
-    # threading.Thread(target=detector_worker, args=("bawah", "kamera_bawah", "image_bawah", 2, det_model), daemon=True).start()
+    threading.Thread(target=detector_worker, args=("bawah", "kamera_bawah", "image_bawah", 2, det_model), daemon=True).start()
 
     app.run(host="0.0.0.0", port=PORT, threaded=True)
