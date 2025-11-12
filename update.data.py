@@ -20,10 +20,8 @@ last_time = time.time()
 gcs_connection_string = 'udpin:0.0.0.0:14550'
 the_connection = mavutil.mavlink_connection(gcs_connection_string, planner_format=False)
 
-def get_mavlink_data_and_send_to_supabase(last_time=last_time):
-    """
-    Mendengarkan data MAVLink, dan mengirimkannya ke tabel yang berbeda.
-    """
+def get_mavlink_data_and_send_to_supabase():
+    # Mendengarkan data MAVLink, dan mengirimkannya ke tabel 
     try:
         print(f"Menunggu data MAVLink pada {gcs_connection_string}...")
         
@@ -59,10 +57,6 @@ def get_mavlink_data_and_send_to_supabase(last_time=last_time):
                 # Kirim data COG ke tabel cog
                 send_to_supabase(cog_data, TABLE_COG_DATA)
             
-           
-            if current_time - last_time > 1000:
-                last_time = time.time()
-                periodic_delete_all_data()
 
     except Exception as e:
         print(f"Terjadi error: {e}")
@@ -70,9 +64,6 @@ def get_mavlink_data_and_send_to_supabase(last_time=last_time):
         get_mavlink_data_and_send_to_supabase()
 
 def send_to_supabase(data, table_name):
-    """
-    Mengirimkan satu baris data ke tabel yang ditentukan di Supabase.
-    """
     try:
         response = supabase.table(table_name).insert(data).execute()
         
@@ -85,19 +76,7 @@ def send_to_supabase(data, table_name):
     except Exception as e:
         print(f"Error saat mengirim data ke Supabase: {e}")
 
-def periodic_delete_all_data():
-    """
-    Menghapus semua data pada kedua tabel setiap 'interval' detik.
-    """
-    while True:
-        try:
-            for table in [TABLE_NAV_DATA, TABLE_COG_DATA]:
-                response = supabase.table(table).delete().gt('id', 0).execute()
-                print(f"Semua data di tabel '{table}' telah dihapus.")
-        except Exception as e:
-            print(f"Error saat menghapus semua data: {e}")
-        
 
 # Jalankan skrip GCS
 if __name__ == "__main__":
-    get_mavlink_data_and_send_to_supabase(last_time)
+    get_mavlink_data_and_send_to_supabase()

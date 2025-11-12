@@ -244,7 +244,6 @@ def capture_from_camera(
         return
 
     window_name = f"Kamera {camera_index} - {image_slot_name}"
-    update_mission_status(mission_camera, "proses")
     while cap.isOpened() :
         ret, frame = cap.read()
         if not ret:
