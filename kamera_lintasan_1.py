@@ -32,6 +32,14 @@ client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 # OpenVINO core
 core = ov.Core()
 
+def skor_ketajaman(frame):
+    # Semakin besar varians Laplacian, semakin tajam gambarnya.
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    lap = cv2.Laplacian(gray, cv2.CV_64F)
+    var = lap.var()
+    return float(var)
+
+
 def update_mission_status(mission_id: str, status: str) -> None:
     """ image_atas, image_bawah, misssion_finish"""
     try:
@@ -229,6 +237,7 @@ def capture_from_camera(
     target_lat: float,
     target_lon: float,
     mission_camera: str = "",
+    max_kandidat: int = 10,
 ):
 
     # Jika slot sudah terisi, tidak usah buka kamera
@@ -242,6 +251,11 @@ def capture_from_camera(
     if not cap.isOpened():
         print(f"Tidak dapat membuka kamera {camera_index}.")
         return
+
+    best_frame = None
+    best_score = -1.0
+    kandidat_terkumpul = 0
+    enough_candidates = False
 
     window_name = f"Kamera {camera_index} - {image_slot_name}"
     while cap.isOpened() :
@@ -280,36 +294,42 @@ def capture_from_camera(
                         # Tulis metadata ke frame
                         tulis_metadata_ke_frame(frame, latest_nav_data)
 
-                        # Encode frame ke JPEG
-                        success, encoded_img = cv2.imencode(".jpg", frame)
-                        if not success:
-                            print(" Gagal meng-encode frame ke JPEG.")
-                            continue
+                        score = skor_ketajaman(frame)
+                        kandidat_terkumpul += 1
 
-                        image_bytes = encoded_img.tobytes()
+                        if score > best_score:
+                            best_score = score
+                            best_frame = frame.copy()
+                        
+                        if kandidat_terkumpul >= max_kandidat:
+                            success, encoded_img = cv2.imencode(".jpg", best_frame)
+                            if not success:
+                                print(" Gagal meng-encode frame ke JPEG.")
+                            image_bytes = encoded_img.tobytes()
 
                         # Upload langsung bytes ke Supabase Storage
-                        client.storage.from_("missionimages").upload(
-                            image_filename,
-                            image_bytes,
-                            {"content-type": "image/jpeg"},
-                        )
+                            client.storage.from_("missionimages").upload(
+                                image_filename,
+                                image_bytes,
+                                {"content-type": "image/jpeg"},
+                            )
 
-                        # Dapatkan public URL dan simpan ke tabel image_mission (ROW BARU)
-                        public_url = client.storage.from_("missionimages").get_public_url(
-                            image_filename
-                        )
-                        client.table("image_mission").insert(
-                            {
-                                "image_url": public_url,
-                                "image_slot_name": image_slot_name,
-                            }
-                        ).execute()
+                            # Dapatkan public URL dan simpan ke tabel image_mission (ROW BARU)
+                            public_url = client.storage.from_("missionimages").get_public_url(
+                                image_filename
+                            )
+                            client.table("image_mission").insert(
+                                {
+                                    "image_url": public_url,
+                                    "image_slot_name": image_slot_name,
+                                }
+                            ).execute()
 
-                        print(f" Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
-                        update_mission_status(mission_camera, "selesai")
-                        cap.release()
-                        break  
+                            print(f" Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
+                            update_mission_status(mission_camera, "selesai")
+                            cap.release()
+                            break
+                        # Encode frame ke JPEG  
                     else:
                         print(" Objek terdeteksi, tapi di luar toleransi jarak ke target.")
 

@@ -15,7 +15,7 @@ SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
 # Sumber kamera (boleh int index USB cam, atau string RTSP)
 CAM1_SRC: Union[int, str] = 0  # kamera_atas
-CAM2_SRC: Union[int, str] = 1  # kamera_bawah
+CAM2_SRC: Union[int, str] = 2  # kamera_bawah
 
 # Model OpenVINO (seperti milikmu)
 DET_MODEL_PATH = Path("hijau2_openvino_model/hijau2.xml")
