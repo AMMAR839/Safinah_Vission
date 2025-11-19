@@ -307,7 +307,7 @@ def capture_from_camera(
                                 print(" Gagal meng-encode frame ke JPEG.")
                             image_bytes = encoded_img.tobytes()
 
-                        # Upload langsung bytes ke Supabase Storage
+                            # Upload langsung bytes ke Supabase Storage
                             client.storage.from_("missionimages").upload(
                                 image_filename,
                                 image_bytes,
@@ -378,6 +378,7 @@ def main():
         target_lat=target_atas_lat,
         target_lon=target_atas_lon,
         mission_camera="image_atas",
+        
     )
     
     # Kamera 2 (kamera_bawah,target titik B)
