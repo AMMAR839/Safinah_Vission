@@ -24,7 +24,7 @@ DET_MODEL_PATH = Path("hijau2_openvino_model/hijau2.xml")
 
 # Parameter deteksi
 CONF_THRESHOLD = 0.9
-MIN_AREA = 500           # minimal luas bbox
+MIN_AREA = 700           # minimal luas bbox
 TOLERANCE_METER = 3       # toleransi jarak ke target dalam meter
 
 # Supabase client
@@ -335,10 +335,13 @@ def capture_from_camera(
                     else:
                         print(" Objek terdeteksi, tapi di luar toleransi jarak ke target.")
 
+            
+
         # Tampilkan frame
         if cv2.waitKey(1) & 0xFF == ord("q"):
             print("Dihentikan oleh user (q).")
             break
+    
     cv2.destroyAllWindows()    
     cap.release()
     print(f" Kamera {camera_index} dimatikan.\n")
