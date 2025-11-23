@@ -283,15 +283,12 @@ def capture_from_camera(
                         print(f" File {image_filename} sudah ada di storage, skip upload.")
                         break  
 
-                    # Ambil nav_data & cek toleransi ke target kamera ini
-                    # Ambil nav_data & cek toleransi ke target kamera ini
                     latest_nav_data, tolerance_ok = get_latest_nav_and_cog(
                         target_lat, target_lon
                     )
 
                     if tolerance_ok :
-                        # Tulis metadata ke frame
-                        tulis_metadata_ke_frame(frame, latest_nav_data)
+
 
                         score = skor_ketajaman(frame)
                         kandidat_terkumpul += 1
@@ -301,6 +298,8 @@ def capture_from_camera(
                             best_frame = frame.copy()
                         
                         if kandidat_terkumpul >= max_kandidat:
+                            # Tulis metadata ke frame terbaik
+                            tulis_metadata_ke_frame(best_frame, latest_nav_data)
                             success, encoded_img = cv2.imencode(".jpg", best_frame)
                             if not success:
                                 print(" Gagal meng-encode frame ke JPEG.")
