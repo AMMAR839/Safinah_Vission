@@ -241,7 +241,7 @@ def capture_from_camera(
     target_lat: float,
     target_lon: float,
     mission_camera: str = "",
-    max_kandidat: int = 10,
+    max_kandidat: int = 20,
 ):
 
     # Jika slot sudah terisi, tidak usah buka kamera
