@@ -10,13 +10,14 @@ import time
 
 timestamp= int(time.time())
 
-
 SUPABASE_URL = "https://jyjunbzusfrmaywmndpa.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5anVuYnp1c2ZybWF5d21uZHBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NDMxMTgsImV4cCI6MjA2OTQxOTExOH0.IQ6yyyR2OpvQj1lIL1yFsWfVNhJIm2_EFt5Pnv4Bd38"
 
 # Index kamera 
-CAMERA_1_INDEX = 0   # kamera_atas
+CAMERA_1_INDEX = 0   
 CAMERA_2_INDEX = 1   # kamera_bawah
+
+
 
 # Model OpenVINO
 DET_MODEL_PATH = Path("hijau2_openvino_model/hijau2.xml")
@@ -24,14 +25,24 @@ DET_MODEL_PATH = Path("hijau2_openvino_model/hijau2.xml")
 # Parameter deteksi
 CONF_THRESHOLD = 0.9
 MIN_AREA = 500           # minimal luas bbox
-TOLERANCE_METER = 5       # toleransi jarak ke target dalam meter
+TOLERANCE_METER = 3       # toleransi jarak ke target dalam meter
 
 # Supabase client
 client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # OpenVINO core
-# OpenVINO core
+
 core = ov.Core()
+
+
+
+def skor_ketajaman(frame):
+    # Semakin besar varians Laplacian, semakin tajam gambarnya.
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    lap = cv2.Laplacian(gray, cv2.CV_64F)
+    var = lap.var()
+    return float(var)
+
 
 def update_mission_status(mission_id: str, status: str) -> None:
     """ image_atas, image_bawah, misssion_finish"""
@@ -202,9 +213,9 @@ def tulis_metadata_ke_frame(frame, latest_nav_data):
             text_line,
             (10, y_offset),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
+            0.8,
             (0, 0, 0),        # hitam
-            5,                # tebal outline
+            3,                # tebal outline
             cv2.LINE_AA,
         )
         # isi putih (lebih tipis)
@@ -213,13 +224,12 @@ def tulis_metadata_ke_frame(frame, latest_nav_data):
             text_line,
             (10, y_offset),
             cv2.FONT_HERSHEY_SIMPLEX,
-            4,
+            0.8,
             (255, 255, 255),  # putih
             1,                # tebal isi
             cv2.LINE_AA,
         )
-        y_offset += 20
-
+        y_offset += 30
 
 
 #  PROSES KAMERA
@@ -231,6 +241,7 @@ def capture_from_camera(
     target_lat: float,
     target_lon: float,
     mission_camera: str = "",
+    max_kandidat: int = 10,
 ):
 
     # Jika slot sudah terisi, tidak usah buka kamera
@@ -245,8 +256,11 @@ def capture_from_camera(
         print(f"Tidak dapat membuka kamera {camera_index}.")
         return
 
+    best_frame = None
+    best_score = -1.0
+    kandidat_terkumpul = 0
+   
     window_name = f"Kamera {camera_index} - {image_slot_name}"
-    update_mission_status(mission_camera, "proses")
     while cap.isOpened() :
         ret, frame = cap.read()
         if not ret:
@@ -273,74 +287,96 @@ def capture_from_camera(
                         print(f" File {image_filename} sudah ada di storage, skip upload.")
                         break  
 
-                    # Ambil nav_data & cek toleransi ke target kamera ini
-                    # Ambil nav_data & cek toleransi ke target kamera ini
                     latest_nav_data, tolerance_ok = get_latest_nav_and_cog(
                         target_lat, target_lon
                     )
 
                     if tolerance_ok :
-                        # Tulis metadata ke frame
-                        tulis_metadata_ke_frame(frame, latest_nav_data)
 
-                        # Encode frame ke JPEG
-                        success, encoded_img = cv2.imencode(".jpg", frame)
-                        if not success:
-                            print(" Gagal meng-encode frame ke JPEG.")
-                            continue
 
-                        image_bytes = encoded_img.tobytes()
+                        score = skor_ketajaman(frame)
+                        kandidat_terkumpul += 1
 
-                        # Upload langsung bytes ke Supabase Storage
-                        client.storage.from_("missionimages").upload(
-                            image_filename,
-                            image_bytes,
-                            {"content-type": "image/jpeg"},
-                        )
+                        if score > best_score:
+                            best_score = score
+                            best_frame = frame.copy()
+                        
+                        if kandidat_terkumpul >= max_kandidat:
+                            # Tulis metadata ke frame terbaik
+                            tulis_metadata_ke_frame(best_frame, latest_nav_data)
+                            success, encoded_img = cv2.imencode(".jpg", best_frame)
+                            if not success:
+                                print(" Gagal meng-encode frame ke JPEG.")
+                            image_bytes = encoded_img.tobytes()
 
-                        # Dapatkan public URL dan simpan ke tabel image_mission (ROW BARU)
-                        public_url = client.storage.from_("missionimages").get_public_url(
-                            image_filename
-                        )
-                        client.table("image_mission").insert(
-                            {
-                                "image_url": public_url,
-                                "image_slot_name": image_slot_name,
-                            }
-                        ).execute()
+                            # Upload langsung bytes ke Supabase Storage
+                            client.storage.from_("missionimages").upload(
+                                image_filename,
+                                image_bytes,
+                                {"content-type": "image/jpeg"},
+                            )
 
-                        print(f" Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
-                        update_mission_status(mission_camera, "selesai")
-                        cap.release()
-                        break  
+                            # Dapatkan public URL dan simpan ke tabel image_mission (ROW BARU)
+                            public_url = client.storage.from_("missionimages").get_public_url(
+                                image_filename
+                            )
+                            client.table("image_mission").insert(
+                                {
+                                    "image_url": public_url,
+                                    "image_slot_name": image_slot_name,
+                                }
+                            ).execute()
+
+                            print(f" Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
+                            update_mission_status(mission_camera, "selesai")
+                            cap.release()
+                            break
+                        # Encode frame ke JPEG  
                     else:
                         print(" Objek terdeteksi, tapi di luar toleransi jarak ke target.")
 
         # Tampilkan frame
-        cv2.imshow(window_name, frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             print("Dihentikan oleh user (q).")
             break
-
+    cv2.destroyAllWindows()    
     cap.release()
-    cv2.destroyAllWindows()
     print(f" Kamera {camera_index} dimatikan.\n")
 
 
 
 def main():
+    try:
+        files = client.storage.from_("missionimages").list()
+        paths = [f["name"] for f in files]  
+        if paths:
+            client.storage.from_("missionimages").remove(paths)
+            print("Semua file di bucket missionimages berhasil dihapus.")
+        else:
+            print("Tidak ada file di bucket missionimages.")
+        update_mission_status("image_atas", "belum")
+        update_mission_status("image_bawah", "belum")
+    except Exception as e:
+        print("Gagal menghapus file dari storage:", e)
+
+    try:
+        response = client.table("image_mission").delete().neq("id", 0).execute()
+        print(f"Semua data di tabel image_mission berhasil dihapus.")
+    except Exception as e:
+        print("Gagal menghapus data dari tabel image_mission:", e)
+
     #   lintasan 2
-    #   id=3 → target kamera_atas
-    #   id=4 → target kamera_bawah
+    #   id=1 → target kamera_atas
+    #   id=2 → target kamera_bawah
     target_atas_lat, target_atas_lon = get_target_location_by_id(3)
     target_bawah_lat, target_bawah_lon = get_target_location_by_id(4)
 
     if target_atas_lat is None or target_atas_lon is None:
-        print(" Gagal mengambil target_lokasi kamera_atas (id=3) dari database.")
+        print(" Gagal mengambil target_lokasi kamera_atas (id=1) dari database.")
         return
 
     if target_bawah_lat is None or target_bawah_lon is None:
-        print(" Gagal mengambil target_lokasi kamera_bawah (id=4) dari database.")
+        print(" Gagal mengambil target_lokasi kamera_bawah (id=2) dari database.")
         return
 
     print(f"Target kamera_atas : {formatA(target_atas_lat, target_atas_lon)}")
@@ -361,6 +397,7 @@ def main():
         target_lat=target_atas_lat,
         target_lon=target_atas_lon,
         mission_camera="image_atas",
+        
     )
     
     # Kamera 2 (kamera_bawah,target titik B)
@@ -368,7 +405,7 @@ def main():
         det_model=det_model,
         camera_index=CAMERA_2_INDEX,
         image_slot_name="kamera_bawah",
-        image_filename="kamera_bawah_{timestamp}.jpg",
+        image_filename=f"kamera_bawah_{timestamp}.jpg",
         target_lat=target_bawah_lat,
         target_lon=target_bawah_lon,
         mission_camera="image_bawah",

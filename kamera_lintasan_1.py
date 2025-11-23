@@ -14,8 +14,10 @@ SUPABASE_URL = "https://jyjunbzusfrmaywmndpa.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5anVuYnp1c2ZybWF5d21uZHBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NDMxMTgsImV4cCI6MjA2OTQxOTExOH0.IQ6yyyR2OpvQj1lIL1yFsWfVNhJIm2_EFt5Pnv4Bd38"
 
 # Index kamera 
-CAMERA_1_INDEX = 0   # kamera_atas
+CAMERA_1_INDEX = 0   
 CAMERA_2_INDEX = 1   # kamera_bawah
+
+
 
 # Model OpenVINO
 DET_MODEL_PATH = Path("hijau2_openvino_model/hijau2.xml")
@@ -29,8 +31,10 @@ TOLERANCE_METER = 3       # toleransi jarak ke target dalam meter
 client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # OpenVINO core
-# OpenVINO core
+
 core = ov.Core()
+
+
 
 def skor_ketajaman(frame):
     # Semakin besar varians Laplacian, semakin tajam gambarnya.
@@ -332,18 +336,35 @@ def capture_from_camera(
                         print(" Objek terdeteksi, tapi di luar toleransi jarak ke target.")
 
         # Tampilkan frame
-        cv2.imshow(window_name, frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             print("Dihentikan oleh user (q).")
             break
-
+    cv2.destroyAllWindows()    
     cap.release()
-    cv2.destroyAllWindows()
     print(f" Kamera {camera_index} dimatikan.\n")
 
 
 
 def main():
+    try:
+        files = client.storage.from_("missionimages").list()
+        paths = [f["name"] for f in files]  
+        if paths:
+            client.storage.from_("missionimages").remove(paths)
+            print("Semua file di bucket missionimages berhasil dihapus.")
+        else:
+            print("Tidak ada file di bucket missionimages.")
+        update_mission_status("image_atas", "belum")
+        update_mission_status("image_bawah", "belum")
+    except Exception as e:
+        print("Gagal menghapus file dari storage:", e)
+
+    try:
+        response = client.table("image_mission").delete().neq("id", 0).execute()
+        print(f"Semua data di tabel image_mission berhasil dihapus.")
+    except Exception as e:
+        print("Gagal menghapus data dari tabel image_mission:", e)
+
     #   lintasan 2
     #   id=1 → target kamera_atas
     #   id=2 → target kamera_bawah
