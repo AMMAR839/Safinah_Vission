@@ -23,7 +23,7 @@ DET_MODEL_PATH = Path("hijau2_openvino_model/hijau2.xml")
 # Parameter deteksi
 CONF_THRESHOLD = 0.9
 MIN_AREA = 500           # minimal luas bbox
-TOLERANCE_METER = 5       # toleransi jarak ke target dalam meter
+TOLERANCE_METER = 3       # toleransi jarak ke target dalam meter
 
 # Supabase client
 client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -255,8 +255,7 @@ def capture_from_camera(
     best_frame = None
     best_score = -1.0
     kandidat_terkumpul = 0
-    enough_candidates = False
-
+   
     window_name = f"Kamera {camera_index} - {image_slot_name}"
     while cap.isOpened() :
         ret, frame = cap.read()
