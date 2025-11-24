@@ -98,6 +98,27 @@ def file_existing(client: Client, bucket_name: str, filename: str) -> bool:
     return any(f["name"] == filename for f in files)
 
 #  SUPABASE DATA
+def get_current_view_type():
+    try:
+        res = (
+            client.table("map_state")
+            .select("id, view_type")
+            .order("id", desc=True) 
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            print("Tabel map_state kosong, default ke 'lintasan1'.")
+            return "lintasan1"
+
+        view_type = res.data[0]["view_type"]
+        print(f"View type aktif dari map_state: {view_type}")
+        return view_type
+    except Exception as e:
+        print("Gagal membaca map_state:", e)
+        # fallback supaya script tetap jalan
+        return "lintasan1"
+
 
 def get_target_location_by_id(target_id: int):
     """
@@ -368,11 +389,21 @@ def main():
     except Exception as e:
         print("Gagal menghapus data dari tabel image_mission:", e)
 
-    #   lintasan 2
-    #   id=1 → target kamera_atas
-    #   id=2 → target kamera_bawah
-    target_atas_lat, target_atas_lon = get_target_location_by_id(1)
-    target_bawah_lat, target_bawah_lon = get_target_location_by_id(2)
+        # Tentukan lintasan dari tabel map_state
+    view_type = get_current_view_type()
+
+    if view_type == "lintasan1":
+        # lintasan1 → pakai ID 1 dan 2
+        target_atas_lat, target_atas_lon = get_target_location_by_id(1)
+        target_bawah_lat, target_bawah_lon = get_target_location_by_id(2)
+    elif view_type == "lintasan2":
+        # lintasan2 → pakai ID 3 dan 4
+        target_atas_lat, target_atas_lon = get_target_location_by_id(3)
+        target_bawah_lat, target_bawah_lon = get_target_location_by_id(4)
+    else:
+        print(f"view_type tidak dikenal: {view_type}. Harusnya 'lintasan1' atau 'lintasan2'.")
+        return
+
 
     if target_atas_lat is None or target_atas_lon is None:
         print(" Gagal mengambil target_lokasi kamera_atas (id=1) dari database.")
