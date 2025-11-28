@@ -452,8 +452,7 @@ def mission2_detect_blue_and_trigger_underwater(
     camera_bawah_index: int,
     target_biru_lat: float,
     target_biru_lon: float,
-    target_bawah_lat: float,
-    target_bawah_lon: float,
+    
 ):
 
     print(f"[MISI 2] Menyalakan kamera atas (index {camera_atas_index}) untuk deteksi kotak biru ...")
@@ -512,8 +511,8 @@ def mission2_detect_blue_and_trigger_underwater(
             camera_index=camera_bawah_index,
             image_slot_name="kamera_bawah",
             image_filename=f"kamera_bawah_{timestamp}.jpg",
-            target_lat=target_bawah_lat,
-            target_lon=target_bawah_lon,
+            target_lat=target_biru_lat,
+            target_lon=target_biru_lon,
             mission_camera="image_bawah",
             max_kandidat=20,
         )
@@ -596,8 +595,6 @@ def main():
         camera_bawah_index=CAMERA_2_INDEX,
         target_biru_lat=target_biru_lat,
         target_biru_lon=target_biru_lon,
-        target_bawah_lat=target_biru_lat,   # pakai posisi yang sama untuk kamera bawah
-        target_bawah_lon=target_biru_lon,
     )
     print("MISI 2 SELESAI (atau dihentikan) \n")
 
