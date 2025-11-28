@@ -15,7 +15,7 @@ SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
 # Index kamera 
 CAMERA_1_INDEX = 0   
-CAMERA_2_INDEX = 1   # kamera_bawah
+CAMERA_2_INDEX = 2   # kamera_bawah
 
 
 
@@ -25,7 +25,7 @@ DET_MODEL_PATH = Path("hijau2_openvino_model/hijau2.xml")
 # Parameter deteksi
 CONF_THRESHOLD = 0.9
 MIN_AREA = 700           # minimal luas bbox
-TOLERANCE_METER = 3       # toleransi jarak ke target dalam meter
+TOLERANCE_METER = 4       # toleransi jarak ke target dalam meter
 
 # Supabase client
 client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -434,6 +434,8 @@ def main():
         
     )
     
+    CONF_THRESHOLD = 0.6
+    TOLERANCE_METER = 3
     # Kamera 2 (kamera_bawah,target titik B)
     capture_from_camera(
         det_model=det_model,
