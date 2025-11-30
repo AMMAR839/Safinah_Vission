@@ -237,7 +237,7 @@ def mission1_capture_green_top(
     camera_index: int = CAMERA_1_INDEX,
     image_slot_name: str = "kamera_atas",
     image_filename: str = None,
-    max_kandidat: int = 20,
+    max_kandidat: int = 10,
 ):
  
 
@@ -357,7 +357,7 @@ def capture_underwater_only(
     target_lat: float,
     target_lon: float,
     mission_camera: str = "image_bawah",
-    max_kandidat: int = 20,
+    max_kandidat: int = 10,
 ):
    
     print(f"[MISI 2] Menyalakan kamera bawah (index {camera_index}) ...")
