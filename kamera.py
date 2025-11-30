@@ -283,6 +283,7 @@ def capture_from_camera(
    
     window_name = f"Kamera {camera_index} - {image_slot_name}"
     while cap.isOpened() :
+        time.sleep(0.1)
         ret, frame = cap.read()
         if not ret:
             print("Tidak ada frame, keluar dari loop.")

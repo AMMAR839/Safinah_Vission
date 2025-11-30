@@ -259,6 +259,7 @@ def mission1_capture_green_top(
     selesai = False
 
     while cap.isOpened():
+        time.sleep(0.1)
         ret, frame = cap.read()
         if not ret:
             print("Tidak ada frame dari kamera atas, keluar dari loop.")
@@ -372,6 +373,7 @@ def capture_underwater_only(
     kandidat_terkumpul = 0
 
     while cap.isOpened():
+        time.sleep(0.1)
         ret, frame = cap.read()
         if not ret:
             print("Tidak ada frame dari kamera bawah, keluar dari loop.")
@@ -466,6 +468,7 @@ def mission2_detect_blue_and_trigger_underwater(
     MIN_AREA = 850 
 
     while cap_atas.isOpened():
+        time.sleep(0.1)
         ret, frame_atas = cap_atas.read()
         if not ret:
             print("Tidak ada frame dari kamera atas (misi 2), keluar dari loop.")

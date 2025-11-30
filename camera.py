@@ -490,6 +490,7 @@ def run_mission_surface_photo_top(
     paused_here = False
 
     while cap_atas.isOpened() :
+        time.sleep(0.1)
         ret, frame_atas = cap_atas.read()
         if not ret:
             print(f"[{mission_label}] Tidak ada frame dari kamera atas.")
@@ -584,6 +585,7 @@ def run_mission_surface_detect_underwater_photo(
     paused_here = False
 
     while cap_atas.isOpened() :
+        time.sleep(0.1)
         ret, frame_atas = cap_atas.read()
         if not ret:
             print(f"[{mission_label}] Tidak ada frame dari kamera atas.")
