@@ -13,13 +13,14 @@ timestamp = int(time.time())
 SUPABASE_URL = "https://jyjunbzusfrmaywmndpa.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5anVuYnp1c2ZybWF5d21uZHBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NDMxMTgsImV4cCI6MjA2OTQxOTExOH0.IQ6yyyR2OpvQj1lIL1yFsWfVNhJIm2_EFt5Pnv4Bd38"
 
-# Index kamera
-CAMERA_1_INDEX = 0      # kamera atas (di atas permukaan air)
-CAMERA_2_INDEX = 2      # kamera bawah air
+# Device kamera (pakai alias udev, sudah di-mapping ke video0 & video3)
+# /dev/kamera_atas -> kamera permukaan
+# /dev/kamera_bawah -> kamera underwater
+CAMERA_1_INDEX = "/dev/kamera_atas"      # kamera atas (di atas permukaan air)
+CAMERA_2_INDEX = "/dev/kamera_bawah"     # kamera bawah air
 
 # Model OpenVINO
-# Sesuaikan path ini dengan model yang kamu punya
-DET_MODEL_HIJAU_PATH = Path("hijau2_openvino_model/hijau2.xml")    # model kotak hijau (misi 1)
+DET_MODEL_HIJAU_PATH = Path("hijau2_openvino_model/hijau2.xml")      # model kotak hijau (misi 1)
 DET_MODEL_BIRU_PATH = Path("best2_openvino_model/best2.xml")         # model kotak biru (misi 2)
 
 # Parameter deteksi
@@ -33,6 +34,7 @@ client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # OpenVINO core
 core = ov.Core()
+
 
 def skor_ketajaman(frame):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -91,6 +93,7 @@ def file_existing(client: Client, bucket_name: str, filename: str) -> bool:
     files = client.storage.from_(bucket_name).list()
     return any(f["name"] == filename for f in files)
 
+
 def get_current_view_type():
     try:
         res = (
@@ -114,7 +117,6 @@ def get_current_view_type():
 
 
 def get_target_location_by_id(target_id: int):
-
     res = (
         client.table("target_gambar")
         .select("lat, lon")
@@ -176,7 +178,6 @@ def compile_model(det_model_path: Path, device: str):
 
 
 def load_model(det_model_path: Path, device: str):
-
     compiled_model = compile_model(det_model_path, device)
 
     det_model = YOLO(det_model_path.parent, task="detect")
@@ -234,18 +235,15 @@ def mission1_capture_green_top(
     det_model_hijau,
     target_lat: float,
     target_lon: float,
-    camera_index: int = CAMERA_1_INDEX,
+    camera_index: str = CAMERA_1_INDEX,
     image_slot_name: str = "kamera_atas",
     image_filename: str = None,
     max_kandidat: int = 10,
 ):
- 
-
     if image_filename is None:
         image_filename = f"{image_slot_name}_{timestamp}.jpg"
 
-
-    print(f"[MISI 1] Menyalakan kamera atas (index {camera_index}) untuk deteksi kotak hijau ...")
+    print(f"[MISI 1] Menyalakan kamera atas (device {camera_index}) untuk deteksi kotak hijau ...")
     cap = cv2.VideoCapture(camera_index)
 
     if not cap.isOpened():
@@ -259,7 +257,7 @@ def mission1_capture_green_top(
     selesai = False
 
     while cap.isOpened():
-        time.sleep(0.1)
+        time.sleep(0.3)
         ret, frame = cap.read()
         if not ret:
             print("Tidak ada frame dari kamera atas, keluar dari loop.")
@@ -351,7 +349,7 @@ def mission1_capture_green_top(
 
 
 def capture_underwater_only(
-    camera_index: int,
+    camera_index: str,
     image_slot_name: str,
     image_filename: str,
     target_lat: float,
@@ -359,12 +357,11 @@ def capture_underwater_only(
     mission_camera: str = "image_bawah",
     max_kandidat: int = 10,
 ):
-   
-    print(f"[MISI 2] Menyalakan kamera bawah (index {camera_index}) ...")
+    print(f"[MISI 2] Menyalakan kamera bawah (device {camera_index}) ...")
     cap = cv2.VideoCapture(camera_index)
 
     if not cap.isOpened():
-        print(f"Tidak dapat membuka kamera bawah index {camera_index}.")
+        print(f"Tidak dapat membuka kamera bawah device {camera_index}.")
         return
 
     best_frame = None
@@ -373,7 +370,7 @@ def capture_underwater_only(
     kandidat_terkumpul = 0
 
     while cap.isOpened():
-        time.sleep(0.1)
+        time.sleep(0.3)
         ret, frame = cap.read()
         if not ret:
             print("Tidak ada frame dari kamera bawah, keluar dari loop.")
@@ -450,25 +447,23 @@ def capture_underwater_only(
 
 def mission2_detect_blue_and_trigger_underwater(
     det_model_biru,
-    camera_atas_index: int,
-    camera_bawah_index: int,
+    camera_atas_index: str,
+    camera_bawah_index: str,
     target_biru_lat: float,
     target_biru_lon: float,
-    
 ):
-
-    print(f"[MISI 2] Menyalakan kamera atas (index {camera_atas_index}) untuk deteksi kotak biru ...")
+    print(f"[MISI 2] Menyalakan kamera atas (device {camera_atas_index}) untuk deteksi kotak biru ...")
     cap_atas = cv2.VideoCapture(camera_atas_index)
 
     if not cap_atas.isOpened():
-        print(f"Tidak dapat membuka kamera atas index {camera_atas_index} (misi 2).")
+        print(f"Tidak dapat membuka kamera atas device {camera_atas_index} (misi 2).")
         return
 
     triggered = False
-    MIN_AREA = 850 
+    MIN_AREA_LOCAL = 650
 
     while cap_atas.isOpened():
-        time.sleep(0.1)
+        time.sleep(0.3)
         ret, frame_atas = cap_atas.read()
         if not ret:
             print("Tidak ada frame dari kamera atas (misi 2), keluar dari loop.")
@@ -484,7 +479,7 @@ def mission2_detect_blue_and_trigger_underwater(
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
 
                 luas = (x2 - x1) * (y2 - y1)
-                if luas >= MIN_AREA:
+                if luas >= MIN_AREA_LOCAL:
                     latest_nav_data, tolerance_ok = get_latest_nav_and_cog(
                         target_biru_lat, target_biru_lon
                     )
@@ -589,7 +584,6 @@ def main():
         max_kandidat=10,
     )
     print("MISI 1 SELESAI (atau dihentikan) \n")
-
 
     print("MULAI MISI 2: Deteksi kotak biru (kamera atas) → trigger kamera bawah ")
     mission2_detect_blue_and_trigger_underwater(
