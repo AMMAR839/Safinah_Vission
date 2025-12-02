@@ -238,7 +238,7 @@ def mission1_capture_green_top(
     camera_index: str = CAMERA_1_INDEX,
     image_slot_name: str = "kamera_atas",
     image_filename: str = None,
-    max_kandidat: int = 5,
+
 ):
     if image_filename is None:
         image_filename = f"{image_slot_name}_{timestamp}.jpg"
@@ -251,10 +251,11 @@ def mission1_capture_green_top(
         return
 
     best_frame = None
-    best_score = -1.0
     best_nav_data = None
     kandidat_terkumpul = 0
     selesai = False
+    max_area = 0
+    Sudah_Deteksi = False
 
     while cap.isOpened():
         time.sleep(0.3)
@@ -280,59 +281,54 @@ def mission1_capture_green_top(
                         target_lat, target_lon
                     )
 
-                    if not tolerance_ok or latest_nav_data is None:
+                    if not tolerance_ok :
                         print(" Kotak hijau terdeteksi, tapi kapal di luar toleransi jarak target misi 1.")
+
+                        if Sudah_Deteksi:
+                            print(" Sudah pernah deteksi sebelumnya tapi sekarang di luar toleransi, upload foto terakhir yang terbaik.")
+                            # Tulis metadata ke frame terbaik
+                            tulis_metadata_ke_frame(best_frame, best_nav_data)
+                            success, encoded_img = cv2.imencode(".jpg", best_frame)
+                            if not success:
+                                print(" Gagal meng-encode frame ke JPEG (misi 1).")
+                                selesai = True
+                                break
+
+                            image_bytes = encoded_img.tobytes()
+
+                            # Upload ke Supabase Storage
+                            client.storage.from_("missionimages").upload(
+                                image_filename,
+                                image_bytes,
+                                {"content-type": "image/jpeg"},
+                            )
+
+                            # Dapatkan public URL dan simpan ke tabel image_mission
+                            public_url = client.storage.from_("missionimages").get_public_url(
+                                image_filename
+                            )
+                            client.table("image_mission").insert(
+                                {
+                                    "image_url": public_url,
+                                    "image_slot_name": image_slot_name,
+                                }
+                            ).execute()
+
+                            print(f"[MISI 1] Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
+                            update_mission_status("image_atas", "selesai")
+                            update_mission_status("image_bawah", "proses")  
+                            selesai = True
+                            break
+
                         continue
 
-                    # Hitung skor ketajaman dan pilih frame terbaik
-                    score = skor_ketajaman(frame)
-                    kandidat_terkumpul += 1
-
-                    if score > best_score:
-                        best_score = score
+                    if luas > max_area:
+                        kandidat_terkumpul += 1
+                        max_area = luas
                         best_frame = frame.copy()
                         best_nav_data = latest_nav_data
-
-                    print(f"[MISI 1] Kandidat ke-{kandidat_terkumpul}, skor ketajaman = {score:.2f}")
-
-                    if kandidat_terkumpul >= max_kandidat:
-                        if best_frame is None or best_nav_data is None:
-                            print(" Tidak ada frame kandidat yang valid untuk misi 1.")
-                            selesai = True
-                            break
-
-                        # Tulis metadata ke frame terbaik
-                        tulis_metadata_ke_frame(best_frame, best_nav_data)
-                        success, encoded_img = cv2.imencode(".jpg", best_frame)
-                        if not success:
-                            print(" Gagal meng-encode frame ke JPEG (misi 1).")
-                            selesai = True
-                            break
-
-                        image_bytes = encoded_img.tobytes()
-
-                        # Upload ke Supabase Storage
-                        client.storage.from_("missionimages").upload(
-                            image_filename,
-                            image_bytes,
-                            {"content-type": "image/jpeg"},
-                        )
-
-                        # Dapatkan public URL dan simpan ke tabel image_mission
-                        public_url = client.storage.from_("missionimages").get_public_url(
-                            image_filename
-                        )
-                        client.table("image_mission").insert(
-                            {
-                                "image_url": public_url,
-                                "image_slot_name": image_slot_name,
-                            }
-                        ).execute()
-
-                        print(f"[MISI 1] Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
-                        update_mission_status("image_atas", "selesai")
-                        selesai = True
-                        break
+                        print(f"[MISI 1] Kamera atas kandidat ke-{kandidat_terkumpul}, luas bbox = {luas}")
+                        Sudah_Deteksi = True
 
             if selesai:
                 break
@@ -398,10 +394,6 @@ def capture_underwater_only(
         if kandidat_terkumpul >= max_kandidat:
             if best_frame is None or best_nav_data is None:
                 print(" Tidak ada frame kandidat yang valid dari kamera bawah.")
-                break
-
-            if file_existing(client, "missionimages", image_filename):
-                print(f" File {image_filename} sudah ada di storage, skip upload.")
                 break
 
             tulis_metadata_ke_frame(best_frame, best_nav_data)
@@ -579,7 +571,6 @@ def main():
         camera_index=CAMERA_1_INDEX,
         image_slot_name="kamera_atas",
         image_filename=f"kamera_atas_{timestamp}.jpg",
-        max_kandidat=5,
     )
     print("MISI 1 SELESAI (atau dihentikan) \n")
 
