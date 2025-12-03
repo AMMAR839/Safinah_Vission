@@ -251,9 +251,9 @@ def mission1_capture_green_top(
     best_frame = None
     best_nav_data = None
     kandidat_terkumpul = 0
-    selesai = False
+    min_kandidat = 5
     max_area = 0
-    Sudah_Deteksi = False
+
 
     while cap.isOpened():
         time.sleep(0.3)
@@ -267,70 +267,62 @@ def mission1_capture_green_top(
         # Jalankan deteksi YOLO (model hijau)
         detections = det_model_hijau(frame, conf=CONF_HIJAU, verbose=False)
 
+        latest_nav_data, tolerance_ok = get_latest_nav_and_cog(target_lat, target_lon)
+
         if detections and detections[0].boxes:
             for box in detections[0].boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
 
                 luas = (x2 - x1) * (y2 - y1)
                 if luas >= MIN_AREA:
-                    # Cek jarak ke target
-                    latest_nav_data, tolerance_ok = get_latest_nav_and_cog(
-                        target_lat, target_lon
-                    )
-
+                    # Cek jarak ke targevt
                     if not tolerance_ok:
-                        print(" Kotak hijau terdeteksi, tapi kapal di luar toleransi jarak target misi 1.")
-
-                        if Sudah_Deteksi:
-                            print(" Sudah pernah deteksi sebelumnya tapi sekarang di luar toleransi, upload foto terakhir yang terbaik.")
-                            # Tulis metadata ke frame terbaik
-                            tulis_metadata_ke_frame(best_frame, best_nav_data)
-                            success, encoded_img = cv2.imencode(".jpg", best_frame)
-                            if not success:
-                                print(" Gagal meng-encode frame ke JPEG (misi 1).")
-                                selesai = True
-                                break
-
-                            image_bytes = encoded_img.tobytes()
-
-                            # Upload ke Supabase Storage
-                            client.storage.from_("missionimages").upload(
-                                image_filename,
-                                image_bytes,
-                                {"content-type": "image/jpeg"},
-                            )
-
-                            # Dapatkan public URL dan simpan ke tabel image_mission
-                            public_url = client.storage.from_("missionimages").get_public_url(
-                                image_filename
-                            )
-                            client.table("image_mission").insert(
-                                {
-                                    "image_url": public_url,
-                                    "image_slot_name": image_slot_name,
-                                }
-                            ).execute()
-
-                            print(f"[MISI 1] Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
-                            update_mission_status("image_atas", "selesai")
-                            update_mission_status("image_bawah", "proses")
-                            selesai = True
-                            break
-
-                        # kalau belum pernah deteksi dalam toleransi, lanjut cari lagi
+                        print(" Kotak hijau terdeteksi, tapi kapal di luar toleransi jarak target misi 1.")   
                         continue
 
                     # Di sini: hijau terdeteksi & kapal dalam toleransi -> update kandidat terbaik
-                    if luas > max_area:
+                    if luas > max_area and tolerance_ok:
                         kandidat_terkumpul += 1
                         max_area = luas
                         best_frame = frame.copy()
                         best_nav_data = latest_nav_data
                         print(f"[MISI 1] Kamera atas kandidat ke-{kandidat_terkumpul}, luas bbox = {luas}")
-                        Sudah_Deteksi = True
-
-            if selesai:
+            
+        
+        if not tolerance_ok and kandidat_terkumpul > min_kandidat:
+            print(" Sudah pernah deteksi sebelumnya tapi sekarang di luar toleransi, upload foto terakhir yang terbaik.")
+            # Tulis metadata ke frame terbaik
+            tulis_metadata_ke_frame(best_frame, best_nav_data)
+            success, encoded_img = cv2.imencode(".jpg", best_frame)
+            if not success:
+                print(" Gagal meng-encode frame ke JPEG (misi 1).")
                 break
+
+            image_bytes = encoded_img.tobytes()
+
+            # Upload ke Supabase Storage
+            client.storage.from_("missionimages").upload(
+                image_filename,
+                image_bytes,
+                {"content-type": "image/jpeg"},
+            )
+
+            # Dapatkan public URL dan simpan ke tabel image_mission
+            public_url = client.storage.from_("missionimages").get_public_url(
+                image_filename
+            )
+            client.table("image_mission").insert(
+                {
+                    "image_url": public_url,
+                    "image_slot_name": image_slot_name,
+                }
+            ).execute()
+
+            print(f"[MISI 1] Foto {image_filename} ({image_slot_name}) berhasil diunggah.")
+            update_mission_status("image_atas", "selesai")
+            update_mission_status("image_bawah", "proses")
+            break
+
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             print("Misi 1 dihentikan oleh user (q).")
@@ -375,8 +367,8 @@ def mission2_detect_blue_and_trigger_underwater(
     best_nav_data = None
     Sudah_Deteksi = False
     kandidat_terkumpul = 0
-    uploaded = False
     max_luas = 0
+    min_kandidat = 3  
 
     while cap_atas.isOpened() and cap_bawah.isOpened():
         time.sleep(0.3)
@@ -395,82 +387,65 @@ def mission2_detect_blue_and_trigger_underwater(
         frame_atas = cv2.resize(frame_atas, (640, 480))
         frame_bawah = cv2.resize(frame_bawah, (640, 480))
 
-        # (Opsional) tampilkan preview
-
         # Deteksi kotak BIRU di kamera atas
         detections = det_model_biru(frame_atas, conf=CONF_BIRU, verbose=False)
 
-        if detections and detections[0].boxes:
-            # Ambil nav sekali per frame deteksi
-            latest_nav_data, tolerance_ok = get_latest_nav_and_cog(
+        # Dapatkan data navigasi terbaru dan cek toleransi jarak ke target biru
+        latest_nav_data, tolerance_ok = get_latest_nav_and_cog(
                 target_biru_lat, target_biru_lon
             )
 
+        if detections and detections[0].boxes:            
             for box in detections[0].boxes:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 luas = (x2 - x1) * (y2 - y1)
-
-                if luas < MIN_AREA_LOCAL:
-                    continue
-
-                if latest_nav_data is None:
-                    print(" Gagal membaca nav_data untuk misi 2.")
-                    continue
 
                 # Kalau deteksi biru tapi kapal di LUAR toleransi
                 if not tolerance_ok:
                     print(" Kotak BIRU terdeteksi, tapi kapal di luar toleransi jarak target misi 2.")
 
-                    # Kalau sebelumnya sudah pernah deteksi dalam toleransi -> upload best_frame dari kamera bawah
-                    if Sudah_Deteksi and best_frame_bawah is not None and best_nav_data is not None and not uploaded:
-                        print(" Sudah pernah deteksi dalam toleransi, upload foto underwater terbaik dari kamera bawah.")
-                        tulis_metadata_ke_frame(best_frame_bawah, best_nav_data)
-                        success, encoded_img = cv2.imencode(".jpg", best_frame_bawah)
-                        if not success:
-                            print(" Gagal meng-encode frame ke JPEG (kamera bawah, misi 2).")
-                            uploaded = False
-                            break
+                if tolerance_ok and luas >= MIN_AREA_LOCAL:
+                    if luas > max_luas:
+                        max_luas = luas
+                        best_frame_bawah = frame_bawah.copy()
+                        best_nav_data = latest_nav_data
+                        kandidat_terkumpul += 1
+                        Sudah_Deteksi = True
+                        print(f"[MISI 2] Kandidat underwater ke-{kandidat_terkumpul}, luas bbox atas = {luas:.2f}")
 
-                        image_bytes = encoded_img.tobytes()
 
-                        # Upload ke Supabase Storage
-                        client.storage.from_("missionimages").upload(
-                            image_filename,
-                            image_bytes,
-                            {"content-type": "image/jpeg"},
-                        )
-
-                        # Dapatkan public URL dan simpan ke tabel image_mission
-                        public_url = client.storage.from_("missionimages").get_public_url(
-                            image_filename
-                        )
-                        client.table("image_mission").insert(
-                            {
-                                "image_url": public_url,
-                                "image_slot_name": image_slot_name,
-                            }
-                        ).execute()
-
-                        print(f"[MISI 2] Foto {image_filename} ({image_slot_name}) dari kamera bawah berhasil diunggah.")
-                        update_mission_status("image_bawah", "selesai")
-                        uploaded = True
-                        break
-
-                    # kalau belum pernah deteksi dalam toleransi, lanjut cari lagi
-                    continue
-
-                # DI SINI: kotak biru terdeteksi & kapal DALAM toleransi
-                # gunakan luas bbox (atas) buat pilih momen terbaik bawah
-                if luas > max_luas:
-                    max_luas = luas
-                    best_frame_bawah = frame_bawah.copy()
-                    best_nav_data = latest_nav_data
-                    kandidat_terkumpul += 1
-                    Sudah_Deteksi = True
-                    print(f"[MISI 2] Kandidat underwater ke-{kandidat_terkumpul}, luas bbox atas = {luas:.2f}")
-
-            if uploaded:
+        if Sudah_Deteksi and not tolerance_ok and kandidat_terkumpul > min_kandidat:
+            print(" Sudah pernah deteksi dalam toleransi, upload foto underwater terbaik dari kamera bawah.")
+            tulis_metadata_ke_frame(best_frame_bawah, best_nav_data)
+            success, encoded_img = cv2.imencode(".jpg", best_frame_bawah)
+            if not success:
+                print(" Gagal meng-encode frame ke JPEG (kamera bawah, misi 2).")
                 break
+
+            image_bytes = encoded_img.tobytes()
+
+            # Upload ke Supabase Storage
+            client.storage.from_("missionimages").upload(
+                image_filename,
+                image_bytes,
+                {"content-type": "image/jpeg"},
+            )
+
+            # Dapatkan public URL dan simpan ke tabel image_mission
+            public_url = client.storage.from_("missionimages").get_public_url(
+                image_filename
+            )
+            client.table("image_mission").insert(
+                {
+                    "image_url": public_url,
+                    "image_slot_name": image_slot_name,
+                }
+            ).execute()
+
+            print(f"[MISI 2] Foto {image_filename} ({image_slot_name}) dari kamera bawah berhasil diunggah.")
+            update_mission_status("image_bawah", "selesai")
+
+            break
 
         # tombol manual stop
         if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -481,7 +456,6 @@ def mission2_detect_blue_and_trigger_underwater(
     cap_bawah.release()
     cv2.destroyAllWindows()
     print(" Kamera atas & bawah (misi 2) dimatikan.\n")
-
 
 def main():
     # Bersihkan file dan data lama di Supabase (sekali di awal sebelum dua misi)
