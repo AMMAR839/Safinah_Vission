@@ -22,10 +22,10 @@ DET_MODEL_HIJAU_PATH = Path("hijau2_openvino_model/hijau2.xml")      # model kot
 DET_MODEL_BIRU_PATH = Path("best2_openvino_model/best2.xml")         # model kotak biru (misi 2)
 
 # Parameter deteksi
-CONF_HIJAU = 0.9        # confidence threshold untuk hijau
+CONF_HIJAU = 0.8        # confidence threshold untuk hijau
 CONF_BIRU = 0.6         # confidence threshold untuk biru
 MIN_AREA = 700          # minimal luas bbox
-TOLERANCE_METER = 4     # toleransi jarak ke target dalam meter
+TOLERANCE_METER = 3     # toleransi jarak ke target dalam meter
 
 # Supabase client
 client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -279,14 +279,14 @@ def mission1_capture_green_top(
                     if not tolerance_ok:
                         print(" Kotak hijau terdeteksi, tapi kapal di luar toleransi jarak target misi 1.")   
                         continue
-
-                    # Di sini: hijau terdeteksi & kapal dalam toleransi -> update kandidat terbaik
-                    if luas > max_area and tolerance_ok:
+                    
+                    if tolerance_ok:
                         kandidat_terkumpul += 1
-                        max_area = luas
-                        best_frame = frame.copy()
-                        best_nav_data = latest_nav_data
-                        print(f"[MISI 1] Kamera atas kandidat ke-{kandidat_terkumpul}, luas bbox = {luas}")
+                        if luas > max_area :
+                            max_area = luas
+                            best_frame = frame.copy()
+                            best_nav_data = latest_nav_data
+                            print(f"[MISI 1] Kamera atas kandidat ke-{kandidat_terkumpul}, luas bbox = {luas}")
             
         
         if not tolerance_ok and kandidat_terkumpul > min_kandidat:
@@ -400,18 +400,19 @@ def mission2_detect_blue_and_trigger_underwater(
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
                 luas = (x2 - x1) * (y2 - y1)
 
+                if luas >= MIN_AREA_LOCAL:
                 # Kalau deteksi biru tapi kapal di LUAR toleransi
-                if not tolerance_ok:
-                    print(" Kotak BIRU terdeteksi, tapi kapal di luar toleransi jarak target misi 2.")
+                    if not tolerance_ok:
+                        print(" Kotak BIRU terdeteksi, tapi kapal di luar toleransi jarak target misi 2.")
 
-                if tolerance_ok and luas >= MIN_AREA_LOCAL:
-                    if luas > max_luas:
-                        max_luas = luas
-                        best_frame_bawah = frame_bawah.copy()
-                        best_nav_data = latest_nav_data
-                        kandidat_terkumpul += 1
-                        Sudah_Deteksi = True
-                        print(f"[MISI 2] Kandidat underwater ke-{kandidat_terkumpul}, luas bbox atas = {luas:.2f}")
+                    if tolerance_ok :
+                        kandidat_terkumpul =+ 1
+                        if luas > max_luas:
+                            max_luas = luas
+                            best_frame_bawah = frame_bawah.copy()
+                            best_nav_data = latest_nav_data
+                            Sudah_Deteksi = True
+                            print(f"[MISI 2] Kandidat underwater ke-{kandidat_terkumpul}, luas bbox atas = {luas:.2f}")
 
 
         if Sudah_Deteksi and not tolerance_ok and kandidat_terkumpul > min_kandidat:
