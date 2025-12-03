@@ -13,18 +13,19 @@ timestamp = int(time.time())
 SUPABASE_URL = "https://jyjunbzusfrmaywmndpa.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5anVuYnp1c2ZybWF5d21uZHBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NDMxMTgsImV4cCI6MjA2OTQxOTExOH0.IQ6yyyR2OpvQj1lIL1yFsWfVNhJIm2_EFt5Pnv4Bd38"
 
+# Di Windows: kamera pakai index angka
 CAMERA_1_INDEX = "/dev/kamera_atas"   # kamera atas (di atas permukaan air)
-CAMERA_2_INDEX = "/dev/kamera_bawah"  # kamera bawah air
+CAMERA_2_INDEX = "/dev/kamera_bawah"   # kamera bawah air
 
 # Model OpenVINO
 DET_MODEL_HIJAU_PATH = Path("hijau2_openvino_model/hijau2.xml")      # model kotak hijau (misi 1)
 DET_MODEL_BIRU_PATH = Path("best2_openvino_model/best2.xml")         # model kotak biru (misi 2)
 
 # Parameter deteksi
-CONF_HIJAU = 0.9        
-CONF_BIRU = 0.6         
-MIN_AREA = 700          
-TOLERANCE_METER = 4     
+CONF_HIJAU = 0.9        # confidence threshold untuk hijau
+CONF_BIRU = 0.6         # confidence threshold untuk biru
+MIN_AREA = 700          # minimal luas bbox
+TOLERANCE_METER = 4     # toleransi jarak ke target dalam meter
 
 # Supabase client
 client: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -241,7 +242,7 @@ def mission1_capture_green_top(
         image_filename = f"{image_slot_name}_{timestamp}.jpg"
 
     print(f"[MISI 1] Menyalakan kamera atas (device {camera_index}) untuk deteksi kotak hijau ...")
-    cap = cv2.VideoCapture(camera_index)
+    cap = cv2.VideoCapture(camera_index,cv2.CAP_V4L2)
 
     if not cap.isOpened():
         print(f"Tidak dapat membuka kamera {camera_index} (kamera atas).")
@@ -349,15 +350,14 @@ def mission2_detect_blue_and_trigger_underwater(
     image_slot_name: str = "kamera_bawah",
     image_filename: str = None,
 ):
-    
     if image_filename is None:
         image_filename = f"{image_slot_name}_{timestamp}.jpg"
 
     print(f"[MISI 2] Menyalakan kamera atas (device {camera_atas_index}) untuk deteksi kotak biru ...")
     print(f"[MISI 2] Menyalakan kamera bawah (device {camera_bawah_index}) untuk ambil foto underwater ...")
 
-    cap_atas = cv2.VideoCapture(camera_atas_index)
-    cap_bawah = cv2.VideoCapture(camera_bawah_index)
+    cap_atas = cv2.VideoCapture(camera_atas_index, cv2.CAP_V4L2)
+    cap_bawah = cv2.VideoCapture(camera_bawah_index, cv2.CAP_V4L2)
 
     if not cap_atas.isOpened():
         print(f"Tidak dapat membuka kamera atas device {camera_atas_index} (misi 2).")
@@ -372,7 +372,7 @@ def mission2_detect_blue_and_trigger_underwater(
     MIN_AREA_LOCAL = 650
 
     best_frame_bawah = None
-    best_nav_data = None        
+    best_nav_data = None
     Sudah_Deteksi = False
     kandidat_terkumpul = 0
     uploaded = False
@@ -394,6 +394,8 @@ def mission2_detect_blue_and_trigger_underwater(
 
         frame_atas = cv2.resize(frame_atas, (640, 480))
         frame_bawah = cv2.resize(frame_bawah, (640, 480))
+
+        # (Opsional) tampilkan preview
 
         # Deteksi kotak BIRU di kamera atas
         detections = det_model_biru(frame_atas, conf=CONF_BIRU, verbose=False)
@@ -457,14 +459,15 @@ def mission2_detect_blue_and_trigger_underwater(
                     # kalau belum pernah deteksi dalam toleransi, lanjut cari lagi
                     continue
 
-                
+                # DI SINI: kotak biru terdeteksi & kapal DALAM toleransi
+                # gunakan luas bbox (atas) buat pilih momen terbaik bawah
                 if luas > max_luas:
-                    luas = max_luas
+                    max_luas = luas
                     best_frame_bawah = frame_bawah.copy()
                     best_nav_data = latest_nav_data
                     kandidat_terkumpul += 1
                     Sudah_Deteksi = True
-                    print(f"[MISI 2] Kandidat underwater ke-{kandidat_terkumpul}, luas = {luas:.2f}")
+                    print(f"[MISI 2] Kandidat underwater ke-{kandidat_terkumpul}, luas bbox atas = {luas:.2f}")
 
             if uploaded:
                 break
@@ -479,7 +482,6 @@ def mission2_detect_blue_and_trigger_underwater(
     cv2.destroyAllWindows()
     print(" Kamera atas & bawah (misi 2) dimatikan.\n")
 
-    
 
 def main():
     # Bersihkan file dan data lama di Supabase (sekali di awal sebelum dua misi)
