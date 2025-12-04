@@ -14,8 +14,8 @@ SUPABASE_URL = "https://jyjunbzusfrmaywmndpa.supabase.co"
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5anVuYnp1c2ZybWF5d21uZHBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTM4NDMxMTgsImV4cCI6MjA2OTQxOTExOH0.IQ6yyyR2OpvQj1lIL1yFsWfVNhJIm2_EFt5Pnv4Bd38"
 
 # Di Windows: kamera pakai index angka
-CAMERA_1_INDEX = "/dev/kamera_atas"   # kamera atas (di atas permukaan air)
-CAMERA_2_INDEX = "/dev/kamera_bawah"   # kamera bawah air
+CAMERA_1_INDEX = 0   # kamera atas (di atas permukaan air)
+CAMERA_2_INDEX = 1   # kamera bawah air
 
 # Model OpenVINO
 DET_MODEL_HIJAU_PATH = Path("hijau2_openvino_model/hijau2.xml")      # model kotak hijau (misi 1)
@@ -242,7 +242,7 @@ def mission1_capture_green_top(
         image_filename = f"{image_slot_name}_{timestamp}.jpg"
 
     print(f"[MISI 1] Menyalakan kamera atas (device {camera_index}) untuk deteksi kotak hijau ...")
-    cap = cv2.VideoCapture(camera_index,cv2.CAP_V4L2)
+    cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
 
     if not cap.isOpened():
         print(f"Tidak dapat membuka kamera {camera_index} (kamera atas).")
@@ -287,7 +287,7 @@ def mission1_capture_green_top(
                             best_frame = frame.copy()
                             best_nav_data = latest_nav_data
                             print(f"[MISI 1] Kamera atas kandidat ke-{kandidat_terkumpul}, luas bbox = {luas}")
-            
+        cv2.imshow("Kamera Atas - Misi 1", frame)    
         
         if not tolerance_ok and kandidat_terkumpul > min_kandidat:
             print(" Sudah pernah deteksi sebelumnya tapi sekarang di luar toleransi, upload foto terakhir yang terbaik.")
@@ -327,6 +327,7 @@ def mission1_capture_green_top(
         if cv2.waitKey(1) & 0xFF == ord("q"):
             print("Misi 1 dihentikan oleh user (q).")
             break
+        
 
     cap.release()
     cv2.destroyAllWindows()
@@ -348,8 +349,8 @@ def mission2_detect_blue_and_trigger_underwater(
     print(f"[MISI 2] Menyalakan kamera atas (device {camera_atas_index}) untuk deteksi kotak biru ...")
     print(f"[MISI 2] Menyalakan kamera bawah (device {camera_bawah_index}) untuk ambil foto underwater ...")
 
-    cap_atas = cv2.VideoCapture(camera_atas_index, cv2.CAP_V4L2)
-    cap_bawah = cv2.VideoCapture(camera_bawah_index, cv2.CAP_V4L2)
+    cap_atas = cv2.VideoCapture(camera_atas_index, cv2.CAP_DSHOW)
+    cap_bawah = cv2.VideoCapture(camera_bawah_index, cv2.CAP_DSHOW)
 
     if not cap_atas.isOpened():
         print(f"Tidak dapat membuka kamera atas device {camera_atas_index} (misi 2).")
