@@ -19,7 +19,7 @@ CAMERA_2_INDEX = 1   # kamera bawah air
 
 # Model OpenVINO
 DET_MODEL_HIJAU_PATH = Path("hijau2_openvino_model/hijau2.xml")      # model kotak hijau (misi 1)
-DET_MODEL_BIRU_PATH = Path("best2_openvino_model/best2.xml")         # model kotak biru (misi 2)
+DET_MODEL_BIRU_PATH = Path("biru2_openvino_model/best2.xml")         # model kotak biru (misi 2)
 
 # Parameter deteksi
 CONF_HIJAU = 0.8        # confidence threshold untuk hijau
